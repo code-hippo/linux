@@ -26,3 +26,11 @@ config OPAL_PRD
 	help
 	  This enables the opal-prd driver, a facility to run processor
 	  recovery diagnostics on OpenPower machines
+
+config OCC_SENSORS_PERF
+	depends on PPC64
+	bool "Perf support for OCC sensors"
+	help
+	  This helps the userspace in reading the performance counters monitored by OCC (On-Chip-Controller).
+          Includes the perf interface for some of the system-level, chip-level, core-level 
+	  and power cap sensors
