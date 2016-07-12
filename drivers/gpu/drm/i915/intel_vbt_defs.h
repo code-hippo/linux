@@ -403,9 +403,10 @@ struct lvds_dvo_timing {
 	u8 vsync_off:4;
 	u8 rsvd0:6;
 	u8 hsync_off_hi:2;
-	u8 h_image;
-	u8 v_image;
-	u8 max_hv;
+	u8 himage_lo;
+	u8 vimage_lo;
+	u8 vimage_hi:4;
+	u8 himage_hi:4;
 	u8 h_border;
 	u8 v_border;
 	u8 rsvd1:3;
@@ -740,6 +741,7 @@ struct bdb_psr {
 #define	 DEVICE_TYPE_INT_TV	0x1009
 #define	 DEVICE_TYPE_HDMI	0x60D2
 #define	 DEVICE_TYPE_DP		0x68C6
+#define	 DEVICE_TYPE_DP_DUAL_MODE	0x60D6
 #define	 DEVICE_TYPE_eDP	0x78C6
 
 #define  DEVICE_TYPE_CLASS_EXTENSION	(1 << 15)
@@ -772,6 +774,17 @@ struct bdb_psr {
 	 DEVICE_TYPE_TMDS_DVI_SIGNALING | \
 	 DEVICE_TYPE_VIDEO_SIGNALING | \
 	 DEVICE_TYPE_DISPLAYPORT_OUTPUT | \
+	 DEVICE_TYPE_ANALOG_OUTPUT)
+
+#define DEVICE_TYPE_DP_DUAL_MODE_BITS \
+	(DEVICE_TYPE_INTERNAL_CONNECTOR | \
+	 DEVICE_TYPE_MIPI_OUTPUT | \
+	 DEVICE_TYPE_COMPOSITE_OUTPUT | \
+	 DEVICE_TYPE_LVDS_SINGALING | \
+	 DEVICE_TYPE_TMDS_DVI_SIGNALING | \
+	 DEVICE_TYPE_VIDEO_SIGNALING | \
+	 DEVICE_TYPE_DISPLAYPORT_OUTPUT | \
+	 DEVICE_TYPE_DIGITAL_OUTPUT | \
 	 DEVICE_TYPE_ANALOG_OUTPUT)
 
 /* define the DVO port for HDMI output type */

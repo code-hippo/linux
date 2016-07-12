@@ -366,6 +366,9 @@ ibx_get_dpll(struct intel_crtc *crtc, struct intel_crtc_state *crtc_state,
 					     DPLL_ID_PCH_PLL_B);
 	}
 
+	if (!pll)
+		return NULL;
+
 	/* reference the pll */
 	intel_reference_shared_dpll(pll, crtc_state);
 
@@ -1374,8 +1377,8 @@ static void bxt_ddi_pll_enable(struct drm_i915_private *dev_priv,
 	I915_WRITE(BXT_PORT_PLL_ENABLE(port), temp);
 	POSTING_READ(BXT_PORT_PLL_ENABLE(port));
 
-	if (wait_for_atomic_us((I915_READ(BXT_PORT_PLL_ENABLE(port)) &
-			PORT_PLL_LOCK), 200))
+	if (wait_for_us((I915_READ(BXT_PORT_PLL_ENABLE(port)) & PORT_PLL_LOCK),
+			200))
 		DRM_ERROR("PLL %d not locked\n", port);
 
 	/*
@@ -1702,9 +1705,9 @@ static const struct intel_dpll_mgr hsw_pll_mgr = {
 
 static const struct dpll_info skl_plls[] = {
 	{ "DPLL 0", DPLL_ID_SKL_DPLL0, &skl_ddi_dpll0_funcs, INTEL_DPLL_ALWAYS_ON },
-	{ "DPPL 1", DPLL_ID_SKL_DPLL1, &skl_ddi_pll_funcs,   0 },
-	{ "DPPL 2", DPLL_ID_SKL_DPLL2, &skl_ddi_pll_funcs,   0 },
-	{ "DPPL 3", DPLL_ID_SKL_DPLL3, &skl_ddi_pll_funcs,   0 },
+	{ "DPLL 1", DPLL_ID_SKL_DPLL1, &skl_ddi_pll_funcs,   0 },
+	{ "DPLL 2", DPLL_ID_SKL_DPLL2, &skl_ddi_pll_funcs,   0 },
+	{ "DPLL 3", DPLL_ID_SKL_DPLL3, &skl_ddi_pll_funcs,   0 },
 	{ NULL, -1, NULL, },
 };
 

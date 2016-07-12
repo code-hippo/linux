@@ -66,7 +66,7 @@
 #define OPENOWNER_POOL_SIZE	8
 
 const nfs4_stateid zero_stateid = {
-	.data = { 0 },
+	{ .data = { 0 } },
 	.type = NFS4_SPECIAL_STATEID_TYPE,
 };
 static DEFINE_MUTEX(nfs_clid_init_mutex);
@@ -1488,9 +1488,9 @@ restart:
 					}
 					spin_unlock(&state->state_lock);
 				}
-				nfs4_put_open_state(state);
 				clear_bit(NFS_STATE_RECLAIM_NOGRACE,
 					&state->flags);
+				nfs4_put_open_state(state);
 				spin_lock(&sp->so_lock);
 				goto restart;
 			}

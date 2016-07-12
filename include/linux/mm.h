@@ -602,7 +602,7 @@ static inline pte_t maybe_mkwrite(pte_t pte, struct vm_area_struct *vma)
 }
 
 void do_set_pte(struct vm_area_struct *vma, unsigned long address,
-		struct page *page, pte_t *pte, bool write, bool anon, bool old);
+		struct page *page, pte_t *pte, bool write, bool anon);
 #endif
 
 /*
@@ -2018,7 +2018,7 @@ static inline void mm_populate(unsigned long addr, unsigned long len) {}
 #endif
 
 /* These take the mm semaphore themselves */
-extern unsigned long __must_check vm_brk(unsigned long, unsigned long);
+extern int __must_check vm_brk(unsigned long, unsigned long);
 extern int vm_munmap(unsigned long, size_t);
 extern unsigned long __must_check vm_mmap(struct file *, unsigned long,
         unsigned long, unsigned long,

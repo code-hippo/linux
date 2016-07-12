@@ -455,7 +455,7 @@ again:
 
 	/*
 	 * skip compression for a small file range(<=blocksize) that
-	 * isn't an inline extent, since it dosen't save disk space at all.
+	 * isn't an inline extent, since it doesn't save disk space at all.
 	 */
 	if (total_compressed <= blocksize &&
 	   (start > 0 || end + 1 < BTRFS_I(inode)->disk_i_size))
@@ -1978,7 +1978,7 @@ int btrfs_set_extent_delalloc(struct inode *inode, u64 start, u64 end,
 {
 	WARN_ON((end & (PAGE_SIZE - 1)) == 0);
 	return set_extent_delalloc(&BTRFS_I(inode)->io_tree, start, end,
-				   cached_state, GFP_NOFS);
+				   cached_state);
 }
 
 /* see btrfs_writepage_start_hook for details on why this is required */
@@ -3119,8 +3119,7 @@ static int btrfs_readpage_end_io_hook(struct btrfs_io_bio *io_bio,
 
 	if (root->root_key.objectid == BTRFS_DATA_RELOC_TREE_OBJECTID &&
 	    test_range_bit(io_tree, start, end, EXTENT_NODATASUM, 1, NULL)) {
-		clear_extent_bits(io_tree, start, end, EXTENT_NODATASUM,
-				  GFP_NOFS);
+		clear_extent_bits(io_tree, start, end, EXTENT_NODATASUM);
 		return 0;
 	}
 
@@ -3272,7 +3271,16 @@ int btrfs_orphan_add(struct btrfs_trans_handle *trans, struct inode *inode)
 	/* grab metadata reservation from transaction handle */
 	if (reserve) {
 		ret = btrfs_orphan_reserve_metadata(trans, inode);
-		BUG_ON(ret); /* -ENOSPC in reservation; Logic error? JDM */
+		ASSERT(!ret);
+		if (ret) {
+			atomic_dec(&root->orphan_inodes);
+			clear_bit(BTRFS_INODE_ORPHAN_META_RESERVED,
+				  &BTRFS_I(inode)->runtime_flags);
+			if (insert)
+				clear_bit(BTRFS_INODE_HAS_ORPHAN_ITEM,
+					  &BTRFS_I(inode)->runtime_flags);
+			return ret;
+		}
 	}
 
 	/* insert an orphan item to track this unlinked/truncated file */
@@ -3722,7 +3730,7 @@ cache_index:
 	 * and doesn't have an inode ref with the name "bar" anymore.
 	 *
 	 * Setting last_unlink_trans to last_trans is a pessimistic approach,
-	 * but it guarantees correctness at the expense of ocassional full
+	 * but it guarantees correctness at the expense of occasional full
 	 * transaction commits on fsync if our inode is a directory, or if our
 	 * inode is not a directory, logging its parent unnecessarily.
 	 */
@@ -4550,6 +4558,7 @@ delete:
 			BUG_ON(ret);
 			if (btrfs_should_throttle_delayed_refs(trans, root))
 				btrfs_async_run_delayed_refs(root,
+							     trans->transid,
 					trans->delayed_ref_updates * 2, 0);
 			if (be_nice) {
 				if (truncate_space_check(trans, root,
@@ -4978,7 +4987,7 @@ static int btrfs_setsize(struct inode *inode, struct iattr *attr)
 		 * be instantly completed which will give us extents that need
 		 * to be truncated.  If we fail to get an orphan inode down we
 		 * could have left over extents that were never meant to live,
-		 * so we need to garuntee from this point on that everything
+		 * so we need to guarantee from this point on that everything
 		 * will be consistent.
 		 */
 		ret = btrfs_orphan_add(trans, inode);
@@ -5248,7 +5257,7 @@ void btrfs_evict_inode(struct inode *inode)
 		}
 
 		/*
-		 * We can't just steal from the global reserve, we need tomake
+		 * We can't just steal from the global reserve, we need to make
 		 * sure there is room to do it, if not we need to commit and try
 		 * again.
 		 */
@@ -5749,6 +5758,7 @@ static int btrfs_real_readdir(struct file *file, struct dir_context *ctx)
 	int name_len;
 	int is_curr = 0;	/* ctx->pos points to the current index? */
 	bool emitted;
+	bool put = false;
 
 	/* FIXME, use a real flag for deciding about the key type */
 	if (root->fs_info->tree_root == root)
@@ -5766,7 +5776,8 @@ static int btrfs_real_readdir(struct file *file, struct dir_context *ctx)
 	if (key_type == BTRFS_DIR_INDEX_KEY) {
 		INIT_LIST_HEAD(&ins_list);
 		INIT_LIST_HEAD(&del_list);
-		btrfs_get_delayed_items(inode, &ins_list, &del_list);
+		put = btrfs_readdir_get_delayed_items(inode, &ins_list,
+						      &del_list);
 	}
 
 	key.type = key_type;
@@ -5913,8 +5924,8 @@ next:
 nopos:
 	ret = 0;
 err:
-	if (key_type == BTRFS_DIR_INDEX_KEY)
-		btrfs_put_delayed_items(&ins_list, &del_list);
+	if (put)
+		btrfs_readdir_put_delayed_items(inode, &ins_list, &del_list);
 	btrfs_free_path(path);
 	return ret;
 }
@@ -6980,7 +6991,18 @@ insert:
 		 * existing will always be non-NULL, since there must be
 		 * extent causing the -EEXIST.
 		 */
-		if (start >= extent_map_end(existing) ||
+		if (existing->start == em->start &&
+		    extent_map_end(existing) == extent_map_end(em) &&
+		    em->block_start == existing->block_start) {
+			/*
+			 * these two extents are the same, it happens
+			 * with inlines especially
+			 */
+			free_extent_map(em);
+			em = existing;
+			err = 0;
+
+		} else if (start >= extent_map_end(existing) ||
 		    start <= existing->start) {
 			/*
 			 * The existing extent map is the one nearest to
@@ -7433,7 +7455,7 @@ static int lock_extent_direct(struct inode *inode, u64 lockstart, u64 lockend,
 				 cached_state);
 		/*
 		 * We're concerned with the entire range that we're going to be
-		 * doing DIO to, so we need to make sure theres no ordered
+		 * doing DIO to, so we need to make sure there's no ordered
 		 * extents in this range.
 		 */
 		ordered = btrfs_lookup_ordered_range(inode, lockstart,
@@ -7595,7 +7617,7 @@ static int btrfs_get_blocks_direct(struct inode *inode, sector_t iblock,
 	if (current->journal_info) {
 		/*
 		 * Need to pull our outstanding extents and set journal_info to NULL so
-		 * that anything that needs to check if there's a transction doesn't get
+		 * that anything that needs to check if there's a transaction doesn't get
 		 * confused.
 		 */
 		dio_data = current->journal_info;
@@ -7628,7 +7650,7 @@ static int btrfs_get_blocks_direct(struct inode *inode, sector_t iblock,
 	 * decompress it, so there will be buffering required no matter what we
 	 * do, so go ahead and fallback to buffered.
 	 *
-	 * We return -ENOTBLK because thats what makes DIO go ahead and go back
+	 * We return -ENOTBLK because that's what makes DIO go ahead and go back
 	 * to buffered IO.  Don't blame me, this is the price we pay for using
 	 * the generic code.
 	 */
@@ -9041,7 +9063,7 @@ static int btrfs_truncate(struct inode *inode)
 		return ret;
 
 	/*
-	 * Yes ladies and gentelment, this is indeed ugly.  The fact is we have
+	 * Yes ladies and gentlemen, this is indeed ugly.  The fact is we have
 	 * 3 things going on here
 	 *
 	 * 1) We need to reserve space for our orphan item and the space to
@@ -9055,15 +9077,15 @@ static int btrfs_truncate(struct inode *inode)
 	 * space reserved in case it uses space during the truncate (thank you
 	 * very much snapshotting).
 	 *
-	 * And we need these to all be seperate.  The fact is we can use alot of
+	 * And we need these to all be separate.  The fact is we can use a lot of
 	 * space doing the truncate, and we have no earthly idea how much space
-	 * we will use, so we need the truncate reservation to be seperate so it
+	 * we will use, so we need the truncate reservation to be separate so it
 	 * doesn't end up using space reserved for updating the inode or
 	 * removing the orphan item.  We also need to be able to stop the
 	 * transaction and start a new one, which means we need to be able to
 	 * update the inode several times, and we have no idea of knowing how
 	 * many times that will be, so we can't just reserve 1 item for the
-	 * entirety of the opration, so that has to be done seperately as well.
+	 * entirety of the operation, so that has to be done separately as well.
 	 * Then there is the orphan item, which does indeed need to be held on
 	 * to for the whole operation, and we need nobody to touch this reserved
 	 * space except the orphan code.
@@ -10515,7 +10537,7 @@ static const struct inode_operations btrfs_dir_ro_inode_operations = {
 static const struct file_operations btrfs_dir_file_operations = {
 	.llseek		= generic_file_llseek,
 	.read		= generic_read_dir,
-	.iterate	= btrfs_real_readdir,
+	.iterate_shared	= btrfs_real_readdir,
 	.unlocked_ioctl	= btrfs_ioctl,
 #ifdef CONFIG_COMPAT
 	.compat_ioctl	= btrfs_compat_ioctl,

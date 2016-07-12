@@ -2225,9 +2225,11 @@ static long shmem_fallocate(struct file *file, int mode, loff_t offset,
 			error = shmem_getpage(inode, index, &page, SGP_FALLOC);
 		if (error) {
 			/* Remove the !PageUptodate pages we added */
-			shmem_undo_range(inode,
-				(loff_t)start << PAGE_SHIFT,
-				(loff_t)index << PAGE_SHIFT, true);
+			if (index > start) {
+				shmem_undo_range(inode,
+				    (loff_t)start << PAGE_SHIFT,
+				    ((loff_t)index << PAGE_SHIFT) - 1, true);
+			}
 			goto undone;
 		}
 
@@ -2645,10 +2647,11 @@ static int shmem_xattr_handler_get(const struct xattr_handler *handler,
 }
 
 static int shmem_xattr_handler_set(const struct xattr_handler *handler,
-				   struct dentry *dentry, const char *name,
-				   const void *value, size_t size, int flags)
+				   struct dentry *unused, struct inode *inode,
+				   const char *name, const void *value,
+				   size_t size, int flags)
 {
-	struct shmem_inode_info *info = SHMEM_I(d_inode(dentry));
+	struct shmem_inode_info *info = SHMEM_I(inode);
 
 	name = xattr_full_name(handler, name);
 	return simple_xattr_set(&info->xattrs, name, value, size, flags);
